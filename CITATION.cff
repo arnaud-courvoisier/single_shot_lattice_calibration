@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+  - family-names: Courvoisier
+    given-names: Arnaud
+    orcid: 
+title: "Single shot lattice calibration"
+version: 1.00
+doi: 
+date-released: 2021-12-15
