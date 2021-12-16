@@ -4,7 +4,12 @@ authors:
   - family-names: Courvoisier
     given-names: Arnaud
     orcid: 
+  - family-names: Gadge
+    given-names: Amruta
+    orcid: 
+    
 title: "Single shot lattice calibration"
 version: 1.00
+url: "https://github.com/arnaud-courvoisier/single_shot_lattice_calibration"
 doi: 
 date-released: 2021-12-15
