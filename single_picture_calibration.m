@@ -1,6 +1,6 @@
-%%% This code takes two pictures as an input an outputs a curve
+%%% This code takes two pictures as an input and outputs a curve
 %%% representing the inverse of the RMS distance between data and theory,
-%%% for various lattice depths. This allows to estimate the depth of the lattice 
+%%% for various lattice depths. This allows to estimate the depth of the lattice
 %%% as the position of the curve's maxima.
 %%% The user is required to input system specific variables and the path to
 %%% the pictures before running the program.
@@ -34,20 +34,22 @@ set(groot, 'defaultColorbarTickLabelInterpreter','latex');
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%% SYSTEM SPECIFIC INITIALIZATION %%%%%%%%%%%%%%%%% 
+%%%%%%%%%%%%%% SYSTEM SPECIFIC INITIALIZATION %%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 calibration = 3.2e-6; % Size of a pixel in the object plane (m)
 time_of_flight = 23e-3; % Time between the lattice release and the imaging (s)
 exposure_time = 90e-6; % Time during which the lattice is pulsed (s)
+imaging_resolution = 15e-6; % Resolution of the imaging system, including shot-to-shot position fluctuations if an average picture is used (m)
 
 m_atom = 1.443e-25; % Mass of an atom (kg)
 lattice_laser_wavelength = 780.241e-9; % Wavelength of the lattice laser used (m)
 
 % Specify here the path of the time of flight pictures, in gray-scale PNG format or any other gray-scale format supported by the imread function.
 % The region of interest surrounding the atoms should be at least 7*h_bar*k wide and centered roughly around 0*h_bar*k.
-initial_momentum_picture = imread('C:\Users\fearnaud\Documents\GitHub\sub_recoil_bragg_report\matlab scripts\single_shot_calibration_program\initial.png'); % Time-of-flight picture without any lattice pulse, used as a reference to obtain the cloud's momentum distribution.
-pulsed_momentum_picture = imread('C:\Users\fearnaud\Documents\GitHub\sub_recoil_bragg_report\matlab scripts\single_shot_calibration_program\pulsed.png'); % Time-of-flight picture after lattice pulse. 
+% The horizontal axis of the picture should correspond to the axis of the optical lattice.
+initial_momentum_picture = imread('C:\Users\fearnaud\Documents\GitHub\single_shot_lattice_calibration\initial.png'); % Time-of-flight picture without any lattice pulse, used as a reference to obtain the cloud's initial momentum distribution.
+pulsed_momentum_picture = imread('C:\Users\fearnaud\Documents\GitHub\single_shot_lattice_calibration\pulsed.png'); % Time-of-flight picture after lattice pulse.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -56,6 +58,19 @@ pulsed_momentum_picture = imread('C:\Users\fearnaud\Documents\GitHub\sub_recoil_
 h_bar = 6.62606896e-34/2/pi;
 e_recoil = h_bar^2*(2*pi/lattice_laser_wavelength)^2/(m_atom)/2; % Recoil energy (J)
 v_recoil = sqrt(2*e_recoil/m_atom);
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+imaging_resolution = imaging_resolution/calibration;
+gaussian_filter_size = floor(size(initial_momentum_picture,2)/20);
+if rem(gaussian_filter_size,2)
+    gaussian_filter_size = gaussian_filter_size - 1;
+end
+x = linspace(-gaussian_filter_size/2, gaussian_filter_size/2, gaussian_filter_size);
+gaussian_filter = exp(-x.^2/(2*imaging_resolution^2));
+gaussian_filter = gaussian_filter/sum(gaussian_filter);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -201,11 +216,11 @@ for vv = 1:length(v_0_vector)
     
     no = numel(q_vector);
     final_population_matrix = [population_matrix(:,(no*1/4):(no/2),1) population_matrix(:,(no/2+1):end,1)+population_matrix(:,1:(no/2),2) population_matrix(:,(no/2+1):end,2)+population_matrix(:,1:(no/2),3) population_matrix(:,(no/2+1):(end*3/4),3)];
-    
+    final_population_matrix = filter(gaussian_filter,1,final_population_matrix,[],2);
 end
 
 final_population_matrix = final_population_matrix./(repmat(max(final_population_matrix')',1,size(final_population_matrix,2)));
-all_population_matrices(:,:) = final_population_matrix;
+final_population_matrix = circshift(final_population_matrix,-gaussian_filter_size/2,2);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -242,7 +257,11 @@ hwhm_right = v_0_vector(idx_max+find(one_over_error2_normalized(idx_max:end)<=(0
 hwhm_left = v_0_vector(find(one_over_error2_normalized(1:idx_max)<=(0.5+min(one_over_error2_normalized)),1,'last'));
 fwhm = hwhm_right-hwhm_left;
 
-figure;
+summary_figure = figure;
+summary_figure.Units = 'normalized';
+summary_figure.Position = [0.3056    0.6234    0.3014    0.3367];
+
+subplot(4,1,1:2)
 plot(v_0_vector,one_over_error2_normalized,'color',[0.4 0.4 0.4],'linewidth',1.5)
 axis square
 xlabel('lattice depth ($E_r$)')
@@ -252,6 +271,21 @@ axis([0 15 0 1.2])
 box on
 grid on
 legend(['$V_0 = ', num2str(lattice_depth,'%1.1f'), '\pm' num2str(fwhm/2,'%1.1f') 'E_r$'])
+
+subplot(4,1,3)
+imagesc([-crop_range,crop_range],[],pulsed_momentum_picture(:,(center-crop_range_in_pixels):(center+crop_range_in_pixels)))
+colormap(flipud(gray))
+xlabel('momentum ($\hbar k$)')
+yticks([])
+
+subplot(4,1,4)
+plot(linspace(-crop_range,crop_range,numel(momentum_distribution)),momentum_distribution,'color',[0.4 0.4 0.4],'linewidth',1.5)
+hold on
+plot(linspace(-crop_range,crop_range,numel(momentum_distribution)),final_population_matrix(idx_max,:),'--','color', [0.6 0.6 0.6],'linewidth',1.5)
+hold off
+xlabel('momentum ($\hbar k$)')
+legend({'Data','Theory'})
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -282,7 +316,7 @@ function fit_result = fit_to_gaussian(x,y)
     fit_result.background = p(4);
     fit_result.all = p;
     fit_result.fit_type = 'gaussian';
-    
+
     try
         fit_result.confidence = nlparci(p,residual,'jacobian',jacobian);
     catch
